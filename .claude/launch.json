@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "expense-tracker-dev",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "PATH=/Users/waneeza.khawar/.nvm/versions/node/v18.20.8/bin:$PATH exec npm run dev"],
+      "port": 3000
+    }
+  ]
+}
