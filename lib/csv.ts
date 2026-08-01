@@ -8,12 +8,12 @@ function escapeCSVField(field: string): string {
 }
 
 export function expensesToCSV(expenses: Expense[]): string {
-  const header = ["Date", "Category", "Description", "Amount"];
+  const header = ["Date", "Category", "Amount", "Description"];
   const rows = expenses.map((e) => [
     e.date,
     e.category,
-    escapeCSVField(e.description),
     e.amount.toFixed(2),
+    escapeCSVField(e.description),
   ]);
   return [header, ...rows].map((row) => row.join(",")).join("\n");
 }
