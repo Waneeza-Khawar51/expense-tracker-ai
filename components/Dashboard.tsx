@@ -17,6 +17,8 @@ import {
 import { Category, CATEGORY_COLORS, Expense } from "@/lib/types";
 import { formatCurrency } from "@/lib/format";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { downloadCSV } from "@/lib/csv";
 
 interface DashboardProps {
   expenses: Expense[];
@@ -110,6 +112,17 @@ export function Dashboard({ expenses }: DashboardProps) {
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={expenses.length === 0}
+          onClick={() => downloadCSV(expenses)}
+        >
+          Export Data
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {summaryCards.map((card) => (
           <Card key={card.label} className="p-5">
