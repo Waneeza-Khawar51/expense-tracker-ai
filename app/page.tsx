@@ -10,6 +10,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { downloadCSV } from "@/lib/csv";
+import { CloudExportHub } from "@/components/cloud/CloudExportHub";
 
 type Tab = "dashboard" | "expenses";
 
@@ -26,6 +27,7 @@ export default function Home() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isCloudExportOpen, setIsCloudExportOpen] = useState(false);
 
   const filteredExpenses = useMemo(() => {
     return expenses
@@ -127,6 +129,20 @@ export default function Home() {
                 Expenses
               </button>
             </nav>
+            <Button
+              variant="secondary"
+              onClick={() => setIsCloudExportOpen(true)}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path d="M5.5 13a4.5 4.5 0 01-.416-8.984A5.5 5.5 0 0115.9 6.02 3.5 3.5 0 0115 13H5.5z" />
+              </svg>
+              Cloud Export
+            </Button>
             <Button onClick={() => setIsAddOpen(true)}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -209,6 +225,12 @@ export default function Home() {
           onCancel={() => setIsAddOpen(false)}
         />
       </Modal>
+
+      <CloudExportHub
+        open={isCloudExportOpen}
+        onClose={() => setIsCloudExportOpen(false)}
+        expenses={expenses}
+      />
     </div>
   );
 }
