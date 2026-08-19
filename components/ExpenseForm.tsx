@@ -1,11 +1,15 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { CATEGORIES, Category, ExpenseInput } from "@/lib/types";
+import { Category, ExpenseInput } from "@/lib/types";
 import { todayISO } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
 
+const NEW_CATEGORY_VALUE = "__new_category__";
+
 interface ExpenseFormProps {
+  categories: Category[];
+  onAddCategory: (name: string) => Category | null;
   initialValues?: ExpenseInput;
   onSubmit: (input: ExpenseInput) => void;
   onCancel?: () => void;
@@ -20,6 +24,8 @@ interface FormErrors {
 }
 
 export function ExpenseForm({
+  categories,
+  onAddCategory,
   initialValues,
   onSubmit,
   onCancel,
@@ -30,13 +36,15 @@ export function ExpenseForm({
     initialValues ? String(initialValues.amount) : ""
   );
   const [category, setCategory] = useState<Category>(
-    initialValues?.category ?? "Food"
+    initialValues?.category ?? categories[0] ?? ""
   );
   const [description, setDescription] = useState(
     initialValues?.description ?? ""
   );
   const [errors, setErrors] = useState<FormErrors>({});
   const [justSubmitted, setJustSubmitted] = useState(false);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
   function validate(): FormErrors {
     const nextErrors: FormErrors = {};
@@ -78,11 +86,34 @@ export function ExpenseForm({
     if (!initialValues) {
       setDate(todayISO());
       setAmount("");
-      setCategory("Food");
+      setCategory(categories[0] ?? "");
       setDescription("");
     }
     setJustSubmitted(true);
     setTimeout(() => setJustSubmitted(false), 1500);
+  }
+
+  function handleCategorySelectChange(value: string) {
+    if (value === NEW_CATEGORY_VALUE) {
+      setIsAddingCategory(true);
+      setNewCategoryName("");
+    } else {
+      setCategory(value);
+    }
+  }
+
+  function handleConfirmNewCategory() {
+    const created = onAddCategory(newCategoryName);
+    if (created) {
+      setCategory(created);
+      setIsAddingCategory(false);
+      setNewCategoryName("");
+    }
+  }
+
+  function handleCancelNewCategory() {
+    setIsAddingCategory(false);
+    setNewCategoryName("");
   }
 
   const inputClasses =
@@ -148,18 +179,56 @@ export function ExpenseForm({
         <label htmlFor="category" className={labelClasses}>
           Category
         </label>
-        <select
-          id="category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value as Category)}
-          className={inputClasses}
-        >
-          {CATEGORIES.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
+        {isAddingCategory ? (
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              type="text"
+              placeholder="New category name"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleConfirmNewCategory();
+                } else if (e.key === "Escape") {
+                  handleCancelNewCategory();
+                }
+              }}
+              className={inputClasses}
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleConfirmNewCategory}
+              disabled={!newCategoryName.trim()}
+            >
+              Add
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleCancelNewCategory}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <select
+            id="category"
+            value={category}
+            onChange={(e) => handleCategorySelectChange(e.target.value)}
+            className={inputClasses}
+          >
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+            <option value={NEW_CATEGORY_VALUE}>+ Add new category…</option>
+          </select>
+        )}
       </div>
 
       <div>

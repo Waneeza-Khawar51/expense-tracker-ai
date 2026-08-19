@@ -14,19 +14,20 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Category, CATEGORY_COLORS, Expense } from "@/lib/types";
+import { Category, Expense, FALLBACK_CATEGORY_COLOR } from "@/lib/types";
 import { formatCurrency } from "@/lib/format";
 import { Card } from "@/components/ui/Card";
 
 interface DashboardProps {
   expenses: Expense[];
+  categoryColors: Record<string, string>;
 }
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
-export function Dashboard({ expenses }: DashboardProps) {
+export function Dashboard({ expenses, categoryColors }: DashboardProps) {
   const stats = useMemo(() => {
     const now = new Date();
     const monthStart = startOfMonth(now);
@@ -145,7 +146,7 @@ export function Dashboard({ expenses }: DashboardProps) {
                     {stats.categoryData.map((entry) => (
                       <Cell
                         key={entry.category}
-                        fill={CATEGORY_COLORS[entry.category]}
+                        fill={categoryColors[entry.category] ?? FALLBACK_CATEGORY_COLOR}
                       />
                     ))}
                   </Pie>

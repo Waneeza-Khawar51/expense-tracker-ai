@@ -1,7 +1,12 @@
-import { Category, CATEGORY_COLORS } from "@/lib/types";
+import { Category, FALLBACK_CATEGORY_COLOR } from "@/lib/types";
 
-export function CategoryBadge({ category }: { category: Category }) {
-  const color = CATEGORY_COLORS[category];
+export function CategoryBadge({
+  category,
+  color = FALLBACK_CATEGORY_COLOR,
+}: {
+  category: Category;
+  color?: string;
+}) {
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset"
