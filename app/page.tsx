@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useExpenses } from "@/hooks/useExpenses";
+import { useCategories } from "@/hooks/useCategories";
 import { Dashboard } from "@/components/Dashboard";
 import { ExpenseList } from "@/components/ExpenseList";
 import { ExpenseFilters, Filters } from "@/components/ExpenseFilters";
@@ -23,6 +24,12 @@ const DEFAULT_FILTERS: Filters = {
 export default function Home() {
   const { expenses, isLoaded, addExpense, updateExpense, deleteExpense } =
     useExpenses();
+  const {
+    categories,
+    categoryColors,
+    addCategory,
+    isLoaded: categoriesLoaded,
+  } = useCategories();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -57,7 +64,7 @@ export default function Home() {
         : "text-slate-600 hover:bg-slate-100"
     }`;
 
-  if (!isLoaded) {
+  if (!isLoaded || !categoriesLoaded) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex items-center gap-2 text-slate-400">
@@ -148,12 +155,13 @@ export default function Home() {
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         {tab === "dashboard" ? (
-          <Dashboard expenses={expenses} />
+          <Dashboard expenses={expenses} categoryColors={categoryColors} />
         ) : (
           <div className="space-y-4">
             <Card className="p-4">
               <div className="flex flex-col gap-4">
                 <ExpenseFilters
+                  categories={categories}
                   filters={filters}
                   onChange={setFilters}
                   onReset={() => setFilters(DEFAULT_FILTERS)}
@@ -189,6 +197,9 @@ export default function Home() {
 
             <ExpenseList
               expenses={filteredExpenses}
+              categories={categories}
+              categoryColors={categoryColors}
+              onAddCategory={addCategory}
               onUpdate={updateExpense}
               onDelete={deleteExpense}
             />
@@ -202,6 +213,8 @@ export default function Home() {
         title="Add Expense"
       >
         <ExpenseForm
+          categories={categories}
+          onAddCategory={addCategory}
           onSubmit={(input) => {
             addExpense(input);
             setIsAddOpen(false);

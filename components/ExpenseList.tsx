@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Expense, ExpenseInput } from "@/lib/types";
+import { Category, Expense, ExpenseInput } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { CategoryBadge } from "@/components/CategoryBadge";
 import { Modal } from "@/components/ui/Modal";
@@ -10,11 +10,21 @@ import { Button } from "@/components/ui/Button";
 
 interface ExpenseListProps {
   expenses: Expense[];
+  categories: Category[];
+  categoryColors: Record<string, string>;
+  onAddCategory: (name: string) => Category | null;
   onUpdate: (id: string, input: ExpenseInput) => void;
   onDelete: (id: string) => void;
 }
 
-export function ExpenseList({ expenses, onUpdate, onDelete }: ExpenseListProps) {
+export function ExpenseList({
+  expenses,
+  categories,
+  categoryColors,
+  onAddCategory,
+  onUpdate,
+  onDelete,
+}: ExpenseListProps) {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
 
@@ -79,11 +89,17 @@ export function ExpenseList({ expenses, onUpdate, onDelete }: ExpenseListProps) 
                     {expense.description}
                   </div>
                   <div className="mt-1 sm:hidden">
-                    <CategoryBadge category={expense.category} />
+                    <CategoryBadge
+                      category={expense.category}
+                      color={categoryColors[expense.category]}
+                    />
                   </div>
                 </td>
                 <td className="hidden px-4 py-3 text-sm sm:table-cell">
-                  <CategoryBadge category={expense.category} />
+                  <CategoryBadge
+                    category={expense.category}
+                    color={categoryColors[expense.category]}
+                  />
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-slate-900">
                   {formatCurrency(expense.amount)}
@@ -145,6 +161,8 @@ export function ExpenseList({ expenses, onUpdate, onDelete }: ExpenseListProps) 
       >
         {editingExpense && (
           <ExpenseForm
+            categories={categories}
+            onAddCategory={onAddCategory}
             initialValues={editingExpense}
             submitLabel="Save Changes"
             onCancel={() => setEditingExpense(null)}

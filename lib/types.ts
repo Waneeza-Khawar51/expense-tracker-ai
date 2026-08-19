@@ -1,13 +1,13 @@
-export const CATEGORIES = [
+export type Category = string;
+
+export const DEFAULT_CATEGORIES: Category[] = [
   "Food",
   "Transportation",
   "Entertainment",
   "Shopping",
   "Bills",
   "Other",
-] as const;
-
-export type Category = (typeof CATEGORIES)[number];
+];
 
 export interface Expense {
   id: string;
@@ -20,7 +20,7 @@ export interface Expense {
 
 export type ExpenseInput = Omit<Expense, "id" | "createdAt">;
 
-export const CATEGORY_COLORS: Record<Category, string> = {
+export const DEFAULT_CATEGORY_COLORS: Record<Category, string> = {
   Food: "#f97316",
   Transportation: "#3b82f6",
   Entertainment: "#a855f7",
@@ -28,3 +28,21 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   Bills: "#ef4444",
   Other: "#64748b",
 };
+
+// Cycled through (by index) to assign a color to each newly created category.
+export const CATEGORY_COLOR_PALETTE: string[] = [
+  "#f97316",
+  "#3b82f6",
+  "#a855f7",
+  "#ec4899",
+  "#ef4444",
+  "#64748b",
+  "#14b8a6",
+  "#eab308",
+  "#8b5cf6",
+  "#0ea5e9",
+  "#f43f5e",
+  "#10b981",
+];
+
+export const FALLBACK_CATEGORY_COLOR = "#64748b";

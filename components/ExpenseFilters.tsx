@@ -1,6 +1,6 @@
 "use client";
 
-import { CATEGORIES, Category } from "@/lib/types";
+import { Category } from "@/lib/types";
 
 export interface Filters {
   search: string;
@@ -10,12 +10,14 @@ export interface Filters {
 }
 
 interface ExpenseFiltersProps {
+  categories: Category[];
   filters: Filters;
   onChange: (filters: Filters) => void;
   onReset: () => void;
 }
 
 export function ExpenseFilters({
+  categories,
   filters,
   onChange,
   onReset,
@@ -72,7 +74,7 @@ export function ExpenseFilters({
           className={inputClasses}
         >
           <option value="All">All categories</option>
-          {CATEGORIES.map((cat) => (
+          {categories.map((cat) => (
             <option key={cat} value={cat}>
               {cat}
             </option>
