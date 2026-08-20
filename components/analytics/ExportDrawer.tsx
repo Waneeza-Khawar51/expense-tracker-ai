@@ -10,7 +10,8 @@ import {
   resolveRangePreset,
 } from "@/lib/analytics";
 import { formatCurrency } from "@/lib/format";
-import { downloadCSV } from "@/lib/csv";
+import { buildExportCSVBlob } from "@/lib/export/serializers/csv";
+import { triggerBlobDownload } from "@/lib/export/download";
 import { Button } from "@/components/ui/Button";
 import { CategoryBadge } from "@/components/CategoryBadge";
 
@@ -91,7 +92,7 @@ export function ExportDrawer({
   }
 
   function handleExport() {
-    downloadCSV(matched, buildExportFilename(range));
+    triggerBlobDownload(buildExportCSVBlob(matched), buildExportFilename(range));
     onClose();
   }
 
