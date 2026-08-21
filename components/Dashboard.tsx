@@ -11,6 +11,7 @@ import {
   computeFastestMovingCategory,
   computePeriodComparison,
   computeRangeStats,
+  dateRangeToISO,
   filterExpensesByRange,
   resolveRangePreset,
   spansMultipleYears,
@@ -21,7 +22,7 @@ import { CategoryBreakdownChart } from "@/components/analytics/CategoryBreakdown
 import { SpendingTrendChart } from "@/components/analytics/SpendingTrendChart";
 import { CategoryTrendChart } from "@/components/analytics/CategoryTrendChart";
 import { InsightsPanel } from "@/components/analytics/InsightsPanel";
-import { ExportDrawer } from "@/components/analytics/ExportDrawer";
+import { ExportDrawer } from "@/components/export/ExportDrawer";
 
 interface DashboardProps {
   expenses: Expense[];
@@ -38,6 +39,8 @@ export function Dashboard({ expenses }: DashboardProps) {
     () => resolveRangePreset(preset, customStart, customEnd),
     [preset, customStart, customEnd]
   );
+
+  const isoRange = useMemo(() => dateRangeToISO(range), [range]);
 
   const yearlyDisabled = useMemo(
     () => !spansMultipleYears(expenses, range),
@@ -178,9 +181,9 @@ export function Dashboard({ expenses }: DashboardProps) {
         open={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         expenses={expenses}
-        initialPreset={preset}
-        initialCustomStart={customStart}
-        initialCustomEnd={customEnd}
+        initialStartDate={isoRange.start}
+        initialEndDate={isoRange.end}
+        initialCategory="All"
       />
     </div>
   );

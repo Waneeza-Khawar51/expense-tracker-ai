@@ -91,6 +91,13 @@ export function resolveRangePreset(
   }
 }
 
+export function dateRangeToISO(range: DateRange): { start: string; end: string } {
+  return {
+    start: range.start ? format(range.start, "yyyy-MM-dd") : "",
+    end: range.end ? format(range.end, "yyyy-MM-dd") : "",
+  };
+}
+
 export function isWithinRange(dateStr: string, range: DateRange): boolean {
   const date = parseISO(dateStr);
   if (range.start && date < range.start) return false;
