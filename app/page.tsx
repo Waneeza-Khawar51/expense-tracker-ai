@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useExpenses } from "@/hooks/useExpenses";
 import { Dashboard } from "@/components/Dashboard";
@@ -128,6 +129,12 @@ export default function Home() {
                 Expenses
               </button>
             </nav>
+            <Link
+              href="/top-categories"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
+            >
+              Top Categories
+            </Link>
             <Button variant="secondary" onClick={() => setIsExportOpen(true)}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
