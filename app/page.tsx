@@ -135,6 +135,12 @@ export default function Home() {
             >
               Top Categories
             </Link>
+            <Link
+              href="/top-vendors"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
+            >
+              Top Vendors
+            </Link>
             <Button variant="secondary" onClick={() => setIsExportOpen(true)}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
