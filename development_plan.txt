@@ -1,0 +1,335 @@
+ML-Powered Expense Categorization — Technical Analysis
+========================================================
+Status: PLANNING ONLY — no code written yet.
+Scope: proposes how to add auto-suggested categories to the existing
+expense-tracker-ai app (Next.js 14 App Router, entirely client-side,
+no backend/API/database, single source of truth = useExpenses hook
+persisting to localStorage under "expense-tracker:expenses").
+
+Grounding facts from the current codebase (not assumptions):
+  - Category set is closed and small: CATEGORIES = Food, Transportation,
+    Entertainment, Shopping, Bills, Other (lib/types.ts).
+  - Expense shape: { id, date, amount, category, description, createdAt }.
+    There is no vendor/merchant field — "vendor" elsewhere in this app is
+    already approximated from `description` (see top-vendors page).
+  - All data lives in one browser's localStorage. There is no server,
+    no user accounts, no cross-device sync, no analytics pipeline.
+  - ExpenseForm.tsx currently hardcodes `category` state to default to
+    "Food" — this is the natural integration point for a suggestion.
+  - CLAUDE.md was just updated to require automated tests and a passing
+    build/test run before every commit, but no test runner is configured
+    yet in this repo. This feature is a natural forcing function to
+    finally add one (see section 7).
+
+
+1. CORE TECHNICAL CHALLENGES
+------------------------------
+- Client-only constraint: there is no server to host a training job,
+  a model registry, or a heavy inference endpoint. Whatever "ML" we ship
+  has to run in the browser, in a bundle-size budget that doesn't wreck
+  the app's current lightweight footprint (First Load JS is currently
+  ~170-200 kB per route).
+- Thin feature signal: the only text signal is free-form `description`
+  (max 200 chars, per ExpenseForm's own validation). No merchant field,
+  no receipt/line-item data, no location, no MCC codes. Amount and date
+  are the only structured signals besides that.
+- Tiny per-user data volume: this is a single-user local app. Training
+  data is whatever one person has typed into the form — realistically
+  tens to a few hundred rows, not the thousands a generic ML classifier
+  wants. Heavy models will overfit or simply have nothing to learn from
+  early on.
+- Cold start: a brand-new browser/profile has zero history. The system
+  must be useful (or silent) with 0 examples, not just accurate at 500.
+- Closed but mutable label set: CATEGORIES is a fixed tuple today, but
+  CLAUDE.md already documents it as something that changes by editing
+  lib/types.ts. The classifier's label space must be derived from
+  CATEGORIES at runtime, not hardcoded, or it silently breaks the day
+  someone adds a 7th category.
+- No persistent compute between sessions: there's no background job
+  runner. "Training" has to be incremental and cheap enough to run
+  synchronously on the main thread whenever an expense is added/edited,
+  or deferred to an idle callback — not a batch process.
+- Storage budget: localStorage is ~5-10MB per origin in most browsers,
+  shared with the expenses array itself. Any persisted model artifact
+  must stay small (KBs, not MBs) and degrade gracefully if the quota is
+  hit or the origin's storage is cleared.
+- Drift from user correction: if the user picks a category different
+  from the suggestion, that disagreement is itself signal and needs to
+  feed back in — but naively overweighting the most recent single
+  correction can make the model thrash on ambiguous vendors ("Amazon").
+
+
+2. DATA COLLECTION
+--------------------
+What we already have "for free":
+  - Every saved expense already IS a labeled training example:
+    (description, amount, date) -> category. No new collection step is
+    needed to get a baseline dataset — hooks/useExpenses.ts already
+    captures this on every addExpense/updateExpense call.
+
+What's genuinely new and needs to be added:
+  - Suggestion-outcome signal: when a suggestion is shown, record
+    whether the user (a) accepted it as-is, (b) changed it to a
+    different category before saving, or (c) never saw one (cold
+    start / description too short). This is the actual quality signal
+    for the feature — accuracy against "final category" alone conflates
+    "the model was right" with "the user didn't bother to change the
+    default." Store this as a small event log, e.g. a new localStorage
+    key "expense-tracker:suggestion-events", capped at the last N
+    events (e.g. 200) to bound size — not appended to the Expense
+    record itself, to avoid changing the core data model.
+  - Feature-engineered fields derived from `description` at
+    suggestion/training time (not stored, computed on the fly):
+    lowercased + trimmed tokens, digit/punctuation stripped, common
+    stopwords removed. Keep this derivation in one pure function so
+    training and inference always tokenize identically.
+
+What we deliberately do NOT collect:
+  - No new required field on Expense (e.g. no forced "vendor" field) —
+    keeps this additive and avoids a breaking schema migration.
+  - No telemetry leaves the browser. No description text, amounts, or
+    model state are ever sent to a server, by default. This app has
+    zero network calls today outside of Next.js's own asset loading;
+    this feature should not be the one to introduce them, absent an
+    explicit, opt-in "smarter suggestions" mode (see section 4).
+  - No cross-user pooling of data. Because there's no backend, there is
+    no mechanism to learn from other users even if we wanted to — and
+    we shouldn't want to, given the privacy posture below.
+
+
+3. ML APPROACHES
+-------------------
+Given (a) a closed 6-class label space, (b) tens-to-hundreds of examples
+per user, (c) a hard client-only/no-heavy-dependency constraint, and
+(d) a need to work reasonably from example #1 — this is squarely a case
+where a classic lightweight statistical model beats anything resembling
+deep learning. Recommendation, in priority order:
+
+  a) Multinomial Naive Bayes over description tokens (primary model).
+     - Bag-of-words / token counts per category, with Laplace (add-1)
+       smoothing so unseen tokens/categories don't produce zero
+       probabilities.
+     - Fully incremental: each new categorized expense just increments
+       token/category counts — no retraining pass, no gradient descent,
+       trivial to keep in sync as expenses are added/edited/deleted.
+     - Small, transparent, serializes to a tiny JSON blob of token
+       counts — easy to persist in localStorage and easy to unit test
+       (pure functions: tokenize, updateCounts, scoreCategory).
+     - Weak on cold start (needs a handful of examples per category to
+       say anything useful) — needs a fallback (see b).
+
+  b) Keyword/rule-based prior (fallback + cold-start bootstrap).
+     - A small hardcoded map of common substrings to categories (e.g.
+       "uber"/"lyft"/"gas" -> Transportation, "netflix"/"spotify" ->
+       Entertainment, "rent"/"electric"/"internet" -> Bills). Used
+       whenever the NB model has too little data to be confident, or
+       blended in at low weight even after that as a stable prior.
+     - Cheap to write, cheap to extend, and gives the feature a
+       reasonable first impression instead of "no suggestions for your
+       first two weeks of use."
+
+  c) Exact/fuzzy recent-match lookup (recurring-expense shortcut).
+     - Before even consulting the NB model, check whether the new
+       description closely matches (normalized exact match, or a cheap
+       edit-distance/Jaccard-on-tokens threshold) a previous expense's
+       description. Recurring vendors (rent, a specific subscription,
+       a regular commute charge) are extremely common in expense data
+       and this shortcut will often outperform a statistical model for
+       exactly the entries a user re-enters most.
+
+  d) Ensemble/decision order: try (c) first (high confidence, narrow
+     applicability) -> fall back to (a) if enough data exists for the
+     top-scoring categories -> fall back to (b) if not -> show no
+     suggestion at all if none of the above clears a minimum confidence
+     threshold (see section 6 for thresholds).
+
+Explicitly NOT recommended for this project:
+  - TensorFlow.js / ONNX Runtime Web / any neural net: adds hundreds of
+    KB to a bundle that's currently light, requires far more training
+    data than a single user will ever generate locally, and buys
+    negligible accuracy over Naive Bayes at this data scale and label
+    count (6 classes).
+  - A hosted LLM call per keystroke/save (e.g. sending description to
+    an API for zero-shot categorization): would work well and needs no
+    "training" at all, but it's a fundamental architecture change (this
+    app currently makes zero network calls) and a privacy/cost
+    tradeoff. Worth flagging as a future opt-in "smart mode" (section
+    4/7), not the default implementation.
+
+
+4. PRIVACY AND DATA SECURITY
+-------------------------------
+- Default posture matches the app's existing one: everything stays on
+  the device. The model (token counts + keyword rules) is derived
+  entirely from data already in localStorage and is itself stored only
+  in localStorage — no new data leaves the browser.
+- localStorage is unencrypted and shared by anyone with access to that
+  browser profile — this is a pre-existing characteristic of the app,
+  not something this feature changes, but it's worth restating because
+  a persisted "model" is, in effect, a compressed summary of the user's
+  spending descriptions and should be treated with the same sensitivity
+  as the expenses themselves (e.g. cleared by the same "clear my data"
+  affordance, if one exists or gets added).
+- If a future "smart mode" sends description text to a hosted LLM for
+  better suggestions, it must be:
+    - Opt-in, off by default, with a clear one-line explanation of what
+      gets sent (description text; explicitly NOT amount, date, or the
+      full expense history) before it's ever enabled.
+    - Minimized: send only the single description being categorized,
+      not the user's history, and never batch/upload the whole
+      dataset "to improve the model" without separate, explicit consent.
+    - Not silently retried/cached server-side in a way the user can't
+      see — if this app ever gets a backend, this is the first feature
+      that would justify a documented data-retention story in the
+      README/CLAUDE.md.
+  This is a design note for a possible future phase, not part of the
+  MVP recommendation in section 7.
+- No third-party analytics/telemetry SDK should be introduced to
+  measure suggestion acceptance rates — that measurement can and should
+  happen entirely client-side (section 2's suggestion-events log),
+  viewable only by the user, consistent with zero external calls.
+
+
+5. USER EXPERIENCE FLOW
+--------------------------
+- Integration point: ExpenseForm.tsx already tracks `category` as
+  local state defaulting to "Food". Replace that static default with a
+  suggestion computed from `description` as the user types (debounced,
+  e.g. 300ms after the last keystroke, to avoid scoring on every
+  keystroke).
+- Suggestion should pre-select the category dropdown/selector but stay
+  a normal, fully-editable field — never lock it, never auto-submit on
+  a suggestion. The user's existing manual override is what generates
+  the training/correction signal from section 2, so the UI must make
+  overriding effortless (it already is, since category is just a
+  dropdown).
+- Add a lightweight visual cue distinguishing "this is a suggestion"
+  from "this is the user's own prior choice" — e.g. a small "Suggested"
+  label near the category field, dismissed/replaced the moment the user
+  manually changes the selection. This avoids the failure mode where a
+  wrong suggestion silently looks identical to an intentional choice.
+- Below the confidence threshold (new user, ambiguous/very short
+  description, no history for any category) show no suggestion at all
+  and fall back to today's behavior (static default / last-used
+  category) rather than guessing loudly and being wrong.
+- Optional, not MVP-blocking: a small settings affordance (could live
+  as a toggle near the existing Export button, matching the app's
+  existing header pattern from the recently-merged top-categories/
+  top-vendors nav links) to disable auto-suggestions entirely, for
+  users who find them noisy.
+- No separate "training" UI is needed — training is implicit and
+  continuous, driven by the same add/edit-expense flow that already
+  exists. This keeps the feature invisible-by-default and additive,
+  consistent with how top-categories/top-vendors were added as
+  self-contained additions rather than reworking existing flows.
+
+
+6. EDGE CASES AND ERRORS
+----------------------------
+- Zero history (new user): no suggestion, or keyword-rule suggestion
+  only, per section 3(b)/(d). Must not throw or show a spinner forever.
+- Very short or blank description ("a", ""): skip scoring entirely
+  (tokenizer would have nothing to work with) — same threshold as
+  ExpenseForm's own validation, which already requires a non-empty,
+  trimmed description.
+- Ambiguous description matching multiple categories with similar
+  scores (e.g. "Amazon" -> Shopping vs Bills vs Entertainment
+  historically): only surface a suggestion when the top category's
+  score clears both an absolute confidence floor and a minimum margin
+  over the second-best category; otherwise stay silent rather than
+  guess with low confidence.
+- Conflicting historical labels for the identical description (user
+  categorized "Amazon" as Shopping once and Bills another time):
+  weight more recent categorizations more heavily (simple time decay
+  on counts) so the model tracks the user's current habits rather than
+  being stuck on their first-ever guess.
+- Non-English text / emoji / unusual punctuation in description: the
+  tokenizer must operate on Unicode-safe word boundaries and never
+  throw on unexpected characters — treat anything it can't tokenize
+  usefully as "no signal," not an error.
+- Description that's purely numbers/symbols (e.g. a check number):
+  same as above — zero usable tokens means no suggestion, not a crash.
+- Category set changes (CATEGORIES tuple edited in lib/types.ts): the
+  model's label space must be read from CATEGORIES at call time, and
+  any persisted model state referencing a category that no longer
+  exists must be dropped/ignored on load rather than causing a runtime
+  error — mirror the defensive try/catch + shape-check pattern already
+  used in hooks/useExpenses.ts's loadExpenses().
+- Corrupted/malformed persisted model JSON in localStorage (manual
+  edit, partial write, quota eviction): loading it must fail safe back
+  to an empty/fresh model, exactly like loadExpenses() already does for
+  the expenses array, never throw and break the form.
+- localStorage quota exceeded when persisting the model: catch the
+  write error, drop the least-informative data (e.g. prune rare
+  tokens) or skip persisting that cycle, and never let a storage
+  failure block saving the actual expense.
+- Bulk edits/deletes: if a user deletes many expenses at once (or all
+  of them), the model should be rebuilt from the remaining expenses
+  rather than silently keeping stale counts from deleted rows —
+  simplest correct approach is deriving the model from the current
+  expenses array on load rather than trying to diff every mutation.
+
+
+7. DEPLOYMENT AND MAINTENANCE STRATEGY
+------------------------------------------
+Recommended phasing:
+
+  Phase 1 (MVP, client-only, no new dependencies):
+    - New pure-logic module, e.g. lib/categorization.ts, implementing
+      tokenization, the keyword-rule table, the Naive Bayes counters,
+      and the confidence-gated suggestion function described in
+      sections 3 and 6. No new npm packages required — this is all
+      plain TypeScript.
+    - Model state derived from the existing expenses array (rebuilt
+      client-side, e.g. memoized off useExpenses() output) rather than
+      a separately-persisted blob, to sidestep the storage-corruption
+      and staleness edge cases in section 6 entirely — recompute is
+      cheap at this data scale (a few hundred rows, bag-of-words
+      counting), so a persisted model artifact isn't obviously needed
+      for v1 and adds a second source of truth to keep in sync. If
+      recompute cost ever becomes a real issue, add persistence with
+      the versioned/defensive-load pattern noted above as a v2 change.
+    - Wire the suggestion into ExpenseForm.tsx as described in
+      section 5, on its own feature branch per this repo's existing
+      workflow (git worktree + feature branch, matching how
+      top-categories and top-vendors were built and merged).
+    - This feature is a strong forcing function to finally add the
+      test runner that CLAUDE.md now requires but the repo doesn't yet
+      have. Recommend Vitest (fast, no config overhead for a Next.js +
+      TypeScript project, works well for pure-function unit tests
+      without needing a DOM/browser environment for the
+      tokenizer/scorer logic specifically). Add `npm run test` /
+      `npm run test:watch` scripts and cover: tokenization edge cases,
+      NB scoring math, confidence-threshold gating, and the
+      corrupted-storage fallback path. This closes the gap flagged
+      earlier where CLAUDE.md requires tests but no runner exists.
+    - Ship behind a simple on-by-default behavior but keep the
+      suggestion logic isolated enough (single function call site in
+      ExpenseForm) that it can be trivially reverted or hidden behind
+      a settings flag if it proves noisy in practice.
+
+  Phase 2 (optional, only if Phase 1 proves insufficient):
+    - Revisit an opt-in hosted-LLM "smart suggestions" mode per the
+      privacy notes in section 4, only if user feedback shows the
+      local statistical model's accuracy is a real pain point once
+      there's enough usage data to judge that. This would be the first
+      feature in this app to introduce a network call and should be
+      scoped and reviewed as its own project (new architecture
+      decision), not bundled into Phase 1.
+
+  Maintenance, given no backend/telemetry exists:
+    - "Monitoring" is necessarily local and manual: the
+      suggestion-events log from section 2 can power a small in-app
+      stats view (consistent with the recently-shipped top-categories/
+      top-vendors analytics pages) showing the user their own
+      suggestion-acceptance rate over time, as a self-serve signal
+      rather than anything reported externally.
+    - The keyword-rule table (section 3b) is the one piece that needs
+      occasional human maintenance (new common vendors/services) —
+      keep it as a small, well-commented constant array so it's a
+      trivial, low-risk PR to extend later.
+    - No model retraining pipeline, no server, no scheduled jobs are
+      needed at any phase of this plan — that's a direct consequence
+      of keeping this client-only and incremental, and is the main
+      reason this approach was chosen over anything heavier in
+      section 3.
