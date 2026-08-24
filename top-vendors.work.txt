@@ -1,0 +1,109 @@
+TOP VENDORS FEATURE — WORK SUMMARY
+===================================
+Worktree: /Users/waneeza.khawar/Documents/Practice Projects/expense-tracker-top-vendors
+Branch:   feature/top-vendors
+Commit:   e375d97 "Add Top Vendors page ranking spend by description as vendor"
+
+WHAT WAS IMPLEMENTED
+---------------------
+A new "Top Vendors" page that groups all expenses by vendor and ranks them by
+total amount spent (highest first). Since the Expense data model has no
+dedicated "vendor" field, the (trimmed) `description` field is used as the
+vendor/merchant name — this was an explicit, deliberate simplification per
+task instructions, not an oversight.
+
+The page (app/top-vendors/page.tsx) has:
+- A loading state matching app/page.tsx's spinner (waits on useExpenses()'s
+  `isLoaded` flag before rendering, to avoid a flash of "no data" before
+  localStorage is read).
+- An empty state ("No spending data yet") when there are zero expenses.
+- A recharts horizontal BarChart showing the top 10 vendors by total spend
+  (styled consistently with the existing analytics charts in
+  components/analytics/*.tsx — same axis/tooltip/grid conventions, indigo
+  #6366f1 bar color matching the existing SpendingTrendChart).
+- A full ranked list ("All Vendors") below the chart showing, per vendor:
+  rank, vendor name, expense count, total $ (via lib/format.ts's
+  formatCurrency), and % of overall spend.
+- Blank/whitespace-only descriptions are bucketed into a synthetic "Unknown"
+  vendor bucket rather than crashing or rendering a blank row.
+- A "Back" link at the top returns to the main "/" route.
+
+Aggregation logic (grouping, summing, computing share of total, sorting
+descending by total) lives inline in the page component via useMemo — kept
+local to this page rather than added to the shared lib/analytics.ts, both
+because the feature is intentionally simple/self-contained and to avoid
+touching a shared file that increases merge-conflict surface with the
+concurrent "Top Expense Categories" work (see Integration Notes below).
+
+FILES CREATED / MODIFIED
+--------------------------
+- CREATED: app/top-vendors/page.tsx
+  New client component page ("use client"), calls useExpenses() itself
+  (per task guidance — this is its own route, not fed props from
+  app/page.tsx). Self-contained: owns its own aggregation, chart, and list
+  rendering.
+
+- MODIFIED: app/page.tsx
+  Two small, additive changes only:
+    1. Added `import Link from "next/link";` at the top.
+    2. Added a single "Top Vendors" <Link href="/top-vendors"> nav item in
+       the header, placed next to the existing Dashboard/Expenses tab nav
+       and Export/Add Expense buttons.
+  No existing lines were changed or removed — this was a minimal, additive
+  diff (7 insertions, 0 deletions) specifically to limit the chance of a
+  merge conflict with the other agent's concurrent edits to the same file.
+
+DEPENDENCIES ADDED
+--------------------
+None. Reused the existing `recharts` dependency (already used elsewhere,
+e.g. components/analytics/CategoryBreakdownChart.tsx and
+SpendingTrendChart.tsx) and the existing `lib/format.ts` formatCurrency
+helper. No new npm packages were installed; package.json/package-lock.json
+are untouched.
+
+TESTING / VERIFICATION APPROACH
+----------------------------------
+No test suite/runner exists in this project (confirmed in CLAUDE.md), so
+verification was done via the type checker, linter, and production build:
+
+1. `npx tsc --noEmit` — passed with no output (clean).
+2. `npm run lint` — "✔ No ESLint warnings or errors".
+3. `npm run build` — succeeded. Build output confirms the new route was
+   picked up and statically prerendered:
+
+     Route (app)                              Size     First Load JS
+     ┌ ○ /                                    170 kB          365 kB
+     ├ ○ /_not-found                          876 B          88.5 kB
+     └ ○ /top-vendors                         2.48 kB         197 kB
+
+   (○ = static/prerendered, consistent with the rest of this fully
+   client-side app).
+
+`npm run dev` was intentionally NOT run, per task instructions.
+
+INTEGRATION NOTES (for whoever merges this branch)
+------------------------------------------------------
+- New route: /top-vendors, file app/top-vendors/page.tsx. This is a brand
+  new file, so it cannot conflict with anything on merge.
+- Nav link: one link added to app/page.tsx's header markup, plus one
+  `next/link` import line. This is the only modified pre-existing file.
+  A concurrent agent is building an unrelated "Top Expense Categories"
+  page in a separate worktree off the same base commit (cda891c) and will
+  likely also add a small nav link into this same header region of
+  app/page.tsx. If both branches touch app/page.tsx's header, expect a
+  small, easily-resolved textual merge conflict there (just keep both new
+  <Link> nav items) — no other file overlap is expected since the two
+  features are otherwise fully separate route files.
+- Vendor-as-description assumption: there is no vendor field in
+  lib/types.ts's Expense interface, and this branch does NOT add one or
+  migrate localStorage data (that would be a breaking schema change, out
+  of scope per task instructions). "Vendor" is purely a display-time
+  grouping key derived from `expense.description.trim()`, defaulting to
+  "Unknown" when blank. If a future feature adds a real `vendor` field to
+  the data model, app/top-vendors/page.tsx's aggregation logic (the
+  useMemo block building the `vendors` array) would need to switch its
+  grouping key from `description` to the new field.
+- Base commit: this worktree branched from cda891c ("Merge pull request
+  #12 ... Consolidate duplicate ExportDrawer components"), same as the
+  concurrent Top Categories worktree, so both should merge cleanly against
+  main/master assuming that commit is still the tip when merging.
