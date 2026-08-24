@@ -130,6 +130,12 @@ export default function Home() {
               </button>
             </nav>
             <Link
+              href="/monthly-insights"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
+            >
+              Monthly Insights
+            </Link>
+            <Link
               href="/top-categories"
               className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
             >
